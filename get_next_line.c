@@ -7,13 +7,13 @@ static char	*function_name(int fd, char *buf, char *backup)
 	char	*char_temp;
 
 	read_line = 1;
-	while (read_line != '\0')//OJO NECESITA MODIFICACION. Se inicia un bucle que continúa mientras read_line no sea igual a '\0' (lo cual es incorrecto, ya que read_line es un entero, no un carácter). Lo más apropiado es: while (!ft_strchr(buf, '\n')), ya que eso interrumpiría el bucle cuando se encuentre un salto de línea en buf, evitando que siga leyendo innecesariamente después de encontrar la línea completa.
+	while (read_line != '\0')//OJO NECESITA MODIFICACION. Se inicia un bucle que continúa mientras read_line no sea igual a '\0' (lo cual es incorrecto, ya que read_line es un entero, no un carácter). Lo más apropiado es: while (!ft_strchr(buf, '\n') && read_line > 0), ya que eso interrumpiría el bucle cuando se encuentre un salto de línea en buf, evitando que siga leyendo innecesariamente después de encontrar la línea completa, y si read_line es 0 (fin de archivo), el bucle debería detenerse también.
 	{
 		read_line = read(fd, buf, BUFFER_SIZE);//Se lee el archivo hasta BUFFER_SIZE bytes. La función read devuelve el número de bytes que efectivamente ha leído, por lo que read_line valdrá un número # de bytes leídos. Si tiene un BUFFER_SIZE de 3 valdrá 3. En cada iteración, buf se actualiza cuando se vuelve a llamar a read(fd, buf, BUFFER_SIZE), lo que carga un nuevo bloque de datos en buf, reemplazando el contenido anterior.
-		if (read_line == -1)//Es necesario verificar read_line == -1 para manejar errores en la lectura, ya que si ocurre un error al leer, la función read devuelve -1, lo que indica un fallo, y no solo el final del archivo (que sería read_line == 0).
-			return (0);
-		else if (read_line == 0)//Si ya hemos terminado de leer todo el archivo
-			break ;
+		if (read_line == -1)//En este caso, read(fd, buf, BUFFER_SIZE) retorna -1, lo que indica que hubo un error de lectura (puede ser debido a un problema con el archivo o el descriptor de archivo). Es necesario verificar read_line == -1 para manejar errores en la lectura, ya que si ocurre un error al leer, la función read devuelve -1, lo que indica un fallo, y no solo el final del archivo (que sería read_line == 0). La llamada a function_name retorna NULL, por lo que en la línea line = function_name(fd, buf, backup);, la variable line se asigna a NULL.
+			return (0);//Esto hace que function_name retorne NULL (en C, 0 es equivalente a NULL para punteros).
+		else if (read_line == 0)//En este caso read(fd, buf, BUFFER_SIZE) retorna 0 ya que no hemos leído ni un solo byte, indicandonos que hemos terminado de leer todo el archivo
+			break ;//Se interrumpe el bucle y retornamos backup a get_next_line, que contiene los datos de los bytes leídos en la lectura anterior. Despues mandamos a extract estos últimos datos como la última line y esta condición que aparece en extract se cumplirá if (line[count] == '\0'. Mira su comentario para ver que sucede.
 		buf[read_line] = '\0';//Se asigna terminador nulo. Recuerda que read_line es un numero, # de bytes leidos. Por ejempo, "Hol\0"
 		if (!backup)//Si el backup está vacío
 			backup = ft_strdup("");//Mira en utilities cuáles son los paramentros de strdup? char	*ft_strdup(const char *s). Este paso asegura que backup apunte a una cadena vacía ("") en caso de que sea NULL, lo que permite concatenar correctamente los datos leídos en las siguientes iteraciones sin causar errores al intentar concatenar con un puntero nulo.
@@ -37,15 +37,15 @@ static char	*extract(char *line)
 	while (line[count] != '\n' && line[count] != '\0')//con line = "Hola\nm" Itera sobre los caracteres de line mientras no sean \n ni \0. Resultado: line[0] = 'H', line[1] = 'o', line[2] = 'l', line[3] = 'a' → Incrementa count en cada iteración. line[4] = '\n' → El bucle se detiene aquí. Final: count = 4.
 		count++;
 	if (line[count] == '\0' || line[1] == '\0')//OJO NECESITA MODIFICACION. Comprueba si no hay \n o si la línea es muy corta. La comprobación de si line[1] == '\0' es innecesaria. Line sería una cadena con un solo carácter, y el primer chequeo line[count] == '\0' ya cubriría ese caso. La comprobación de si hemos llegado al caracter nulo si es interesante. Haber llegado sin haber encontrado un salto de línea significa que ya hemos llegado al final del texto. Backup además no recibiría ya ningun sobrante con substr
-		return (0);//Si line[4] fuera el final de la cadena (\0), entonces return (0) indicaría a la función get_next_line que hemos llegado al final del texto, que no hay necesidad de realizar un backup ni extraer más datos, y que podemos retornar line directamente a la función main.
-	backup = ft_substr(line, count + 1, ft_strlen(line) - count);//Cortamos la cadena despues del salto de linea enviando a la funcion la linea, la posicion de \n y la longitud de la subcadena a la funcion ft_substr
-	if (*backup == '\0')
+		return (0);//Si line[4] fuera el final de la cadena (\0) (en lugar de un salto de línea), entonces return (0) indicaría a la función get_next_line que hemos llegado al final del texto, que no hay necesidad de realizar un backup ni extraer más datos, y que podemos retornar line directamente a la función main. No solo eso, también BACKUP sería a partir de ahora NULL porque se retorna (0) y se guarda aquí backup = extract(line);
+	backup = ft_substr(line, count + 1, ft_strlen(line) - count);//OJO POSIBLE MODIFICACION. Cortamos la cadena despues del salto de linea enviando a la funcion char	*ft_substr(char const *s, unsigned int start, size_t len) la linea, la posicion de después de \n (count + 1) y la longitud de la subcadena. La funcion substr devuelve un puntero al primer caracter de backup = "m". El problema es la longitud ya que yo solo necesito los bytes resultantes de restar len de linea - len de la subcadena (mas el caracter nulo, para el que se reserva memoria en la funcion substr con malloc). La len de line = "Hola\nm" es 6, la len de la subcadena es len de line - len de subcadena a contar justo despues del salto de linea. Por tanto, no es a partir de count, 4 (ya que en count nos encontramos en el salto de linea) es a partir de count + 1. En este caso 5. Así: backup = ft_substr(line, count + 1, ft_strlen(line) - (count + 1));
+	if (*backup == '\0')//Comprueba si el primer carácter de backup es el carácter nulo (\0). Si *backup == '\0', significa que substr ha devuelto una cadena vacía (porque no hay contenido después del salto de línea), es decir la funcion substr devolvería un puntero que apunta a una memoria válida reservada con malloc en substr que solo contiene el caracter nulo, por eso sería una cadena vacía. backup sería entonces eso, un puntero válido que apunta a una memoria asignada (aunque esta memoria solo contiene el carácter nulo). En este caso, al detectar que la cadena está vacía, liberamos la memoria asociada a backup y lo asignamos a NULL para evitar punteros colgando o accesos futuros a memoria no utilizada.
 	{
-		free(backup);
+		free(backup);//Dejar un puntero colgando o una memoria no utilizada puede conllevar varios riesgos. Se describen abajo.
 		backup = NULL;
 	}
-	line[count + 1] = '\0';
-	return (backup);
+	line[count + 1] = '\0';//Reemplaza el carácter en line[count + 1] (índice 5) con el carácter nulo (\0). Resultado: Modifica line para que ahora sea "Hola\n". Por qué? Al asignar el carácter nulo (\0) en la posición 5 se corta la cadena en ese punto y el contenido posterior ("m" o el que sea) ya no sería accesible, ya que el carácter nulo indica el final de la cadena en C.
+	return (backup);//La función devolvería "m" a get_next_line. Cuando get_next_line se vuelva a llamar, backup conservará su valor de 'm' porque es una variable estática, lo que permite continuar desde donde se dejó.
 }
 
 char	*get_next_line(int fd)
@@ -59,13 +59,13 @@ char	*get_next_line(int fd)
 	buf = malloc(sizeof(char) * (BUFFER_SIZE + 1));//Se asigna memoria para buf de tamaño BUFFER_SIZE + 1 (4 bytes si BUFFER_SIZE = 3).
 	if (!buf)//Si no se pudo asignar memoria para buf, devuelve NULL.
 		return (0);
-	line = function_name(fd, buf, backup);//Aqui almacenamos la línea completa que hemos leído hasta el salto de línea devuelta por function_name
+	line = function_name(fd, buf, backup);//Aqui almacenamos la línea completa que hemos leído. Recuerda que la function_name deja de leer en el momento en el que encuentra un salto de linea. No obstnte, line puede incluir mas caracteres despues del salto de linea, ya que el bloque leido ha podido incluir mas bytes despues del salto. Como la line = "Hola\nm"
 	free(buf);//Se libera buf porque malloc asigna memoria dinámica para el buffer, y es importante liberar esa memoria después de usarla para evitar fugas de memoria. buf se utiliza para almacenar temporalmente los datos leídos, pero una vez que ya no se necesita, se debe liberar.
 	buf = NULL;//El puntero buf se pone a NULL después de liberarlo para evitar que quede apuntando a una dirección de memoria inválida, lo que podría causar errores si intentamos acceder a él más tarde. Sin embargo, este paso no es estrictamente necesario, ya que buf no se usa más después de esta función.
-	if (!line)//verifica si el puntero line es NULL. Si es NULL, significa que no se ha podido leer una línea válida y la función retorna NULL. En caso contrario, continúa con la ejecución normal.
+	if (!line)//verifica si el puntero line es NULL. Si es NULL, significa que no se ha podido leer una línea válida y la función retorna NULL. Esto podría ocurrir si read_line == -1 por ejemplo (en este caso se retorna 0, que es como decir que line es NULL). Mira más arriba. Entonces, la función get_next_line retorna NULL a la main, indicando que no se pudo leer una línea debido a un error en la lectura. En caso contrario, continúa con la ejecución normal.
 		return (NULL);
-	backup = extract(line);//Enviamos la línea a la función extract. En nuestro ejemplo, enviamos line = "Hola\nm"
-	return (line);//Devuelve a main la linea
+	backup = extract(line);//Enviamos la línea a la función extract. En nuestro ejemplo, enviamos line = "Hola\nm" Podemos recibir de extract o bien los datos sobrantes o bien 0 si hemos llegado al final del archivo (read_line == 0). Si hemos llegado al final del archivo backup es NULL
+	return (line);//Devuelve a main un puntero que apunta a line, es decir una cadena de caracteres que ha sido leída por function_name, y la cadena ha sido modificada por extract (si es necesario, cortando el contenido después del salto de línea). Por tanto, la modificación de line en extract de añadir un caracter nulo para cortar la cadena despues del salto de linea afecta al line que se retorna en get_next_line. Asimismo, extract actualiza backup con la parte restante para la próxima llamada.
 }
 
 
@@ -124,6 +124,15 @@ backup (variable estática):
 Objetivo del proyecto: Conservar datos parciales entre llamadas consecutivas a get_next_line().
 Cómo ayuda: backup almacena cualquier contenido sobrante de una lectura anterior que aún no se ha devuelto. Esto permite que la función continúe desde el punto en que quedó en cada llamada, facilitando la lectura línea por línea sin perder datos.
 El objetivo de extract es truncar line hasta el salto de línea y guardar en backup el contenido sobrante, si lo hay.
+
+Dejar un puntero colgando o una memoria no utilizada puede conllevar varios riesgos, entre ellos:
+
+Fugas de memoria (Memory Leaks): Si no se libera la memoria correctamente, la memoria asignada no se puede reutilizar, lo que lleva a un consumo innecesario de recursos. Con el tiempo, esto puede agotar la memoria disponible y hacer que el sistema se quede sin memoria.
+
+Acceso a memoria no válida (Dangling Pointer): Si un puntero apunta a una dirección de memoria que ya ha sido liberada, y luego intentas acceder a esa memoria, puedes obtener resultados inesperados o incluso causar fallos en el programa, lo que puede generar comportamientos erráticos o bloqueos.
+
+Compromiso de estabilidad y seguridad: Si no gestionas correctamente la memoria, es posible que tu aplicación sea vulnerable a problemas de seguridad como la corrupción de memoria o incluso ataques de explotación (por ejemplo, a través de desbordamientos de búfer).
+
 #include <fcntl.h>
 #include <stdio.h>
 #include "get_next_line.h"
